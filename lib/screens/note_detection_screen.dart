@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/tflite_service.dart';
 
 class NoteDetectionScreen extends StatefulWidget {
   const NoteDetectionScreen({super.key});
@@ -9,35 +12,93 @@ class NoteDetectionScreen extends StatefulWidget {
 }
 
 class _NoteDetectionScreenState extends State<NoteDetectionScreen> {
-  String _status = 'Point your camera at a banknote.\n(Prototype mode)';
-  bool _torch = false;
+  String _status = 'Point your camera at a banknote.';
+  bool _modelLoaded = false;
 
   final FlutterTts _flutterTts = FlutterTts();
+  final TFLiteService _tfliteService = TFLiteService();
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    _flutterTts.setLanguage("en-IN"); // Indian English accent
+
+    // Configure TTS voice
+    _flutterTts.setLanguage("en-IN"); // Indian English
     _flutterTts.setSpeechRate(0.45);  // slower for clarity
     _flutterTts.setPitch(1.0);
+
+    // Speak when screen opens
+    _speak("Note Detection. Please point your camera at an Indian banknote.");
+    _speak("Click on note dectect button at the bottom screen to detect note.");
+
+
+    _initModel();
+    
+  }
+
+  Future<void> _initModel() async {
+    setState(() {
+      _status = "Loading AI model...";
+    });
+    _speak("Loading  model, please wait.");
+    try {
+      await _tfliteService.loadModel();
+      setState(() {
+        _status = "Model ready! Point your camera at a banknote.";
+        _modelLoaded = true;
+      });
+      _speak("Model is ready. Tap Detect Note button to start.");
+    } catch (e) {
+      setState(() {
+        _status = "Error loading model: ${e.toString()}";
+      });
+      _speak("Error loading model. Please restart the app.");
+    }
   }
 
   Future<void> _speak(String text) async {
-    await _flutterTts.stop(); // stop if already speaking
+    if (text.trim().isEmpty) return;
+    await _flutterTts.stop();
     await _flutterTts.speak(text);
   }
 
-  void _demoDetect() {
+  Future<void> _detectNote() async {
+    if (!_modelLoaded) {
+      setState(() {
+        _status = "Model not ready. Please wait...";
+      });
+      _speak("Model not ready. Please wait.");
+      return;
+    }
+
+    final pickedFile = await _picker.pickImage(source: ImageSource.camera);
+    if (pickedFile == null) {
+      _speak("No image captured.");
+      return;
+    }
+
+    final image = File(pickedFile.path);
+
     setState(() {
-      _status = 'Detected: ₹50 (confidence 0.91)\nSay: “Fifty Rupees”.';
+      _status = "Processing...";
     });
+    _speak("Processing the note, please wait.");
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Demo detection triggered')),
-    );
+    try {
+      final result = await _tfliteService.runModelOnImage(image);
 
-    // 👇 Speech output
-    _speak("Fifty Rupees");
+      setState(() {
+        _status = 'Detected: $result';
+      });
+
+      _speak("Detected. $result rupees note.");
+    } catch (e) {
+      setState(() {
+        _status = "Error: ${e.toString()}";
+      });
+      _speak("Error detecting the note.");
+    }
   }
 
   @override
@@ -70,24 +131,17 @@ class _NoteDetectionScreenState extends State<NoteDetectionScreen> {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _demoDetect,
+                    onPressed: _detectNote,
                     icon: const Icon(Icons.currency_rupee_rounded),
-                    label: const Text('Demo Detect'),
+                    label: const Text('Detect Note'),
                   ),
                 ),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => setState(() => _torch = !_torch),
-                    icon: Icon(_torch ? Icons.flash_on : Icons.flash_off),
-                    label: Text(_torch ? 'Torch ON' : 'Torch OFF'),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              'Tip: keep the note flat and well-lit.\n(Plug your model to replace demo.)',
+              'Tip: keep the note flat and well-lit.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.black.withOpacity(.6)),
             ),

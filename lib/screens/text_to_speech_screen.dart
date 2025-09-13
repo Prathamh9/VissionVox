@@ -6,6 +6,7 @@ import 'package:vision_vox/services/ocr_service.dart';
 
 class TextToSpeechScreen extends StatefulWidget {
   const TextToSpeechScreen({super.key});
+
   @override
   State<TextToSpeechScreen> createState() => _TextToSpeechScreenState();
 }
@@ -16,13 +17,51 @@ class _TextToSpeechScreenState extends State<TextToSpeechScreen> {
   final _ctrl = TextEditingController();
   File? _pickedImage;
 
+  @override
+  void initState() {
+    super.initState();
+    // Speak welcome instructions
+    _tts.speak(
+      "Text to Speech. You can capture a photo, pick from gallery, "
+      "or type text manually. Use the buttons below to get started."
+    );
+  }
+
+  /// Pick from gallery
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
-      setState(() => _pickedImage = File(picked.path));
-      final extracted = await _ocr.extractText(File(picked.path));
-      setState(() => _ctrl.text = extracted.isNotEmpty ? extracted : "No text found in image.");
+      await _processImage(File(picked.path));
+      _tts.speak("Image selected from gallery. Extracting text.");
+    } else {
+      _tts.speak("No image selected.");
+    }
+  }
+
+  /// Capture from camera
+  Future<void> _captureImage() async {
+    final picker = ImagePicker();
+    final captured = await picker.pickImage(source: ImageSource.camera);
+    if (captured != null) {
+      await _processImage(File(captured.path));
+      _tts.speak("Image captured. Extracting text.");
+    } else {
+      _tts.speak("No image captured.");
+    }
+  }
+
+  /// Shared method → OCR + Update text + Speak
+  Future<void> _processImage(File file) async {
+    setState(() => _pickedImage = file);
+    final extracted = await _ocr.extractText(file);
+
+    setState(() => _ctrl.text = extracted.isNotEmpty ? extracted : "No text found in image.");
+
+    if (extracted.isNotEmpty) {
+      await _tts.speak("Text detected. Reading now. $extracted");
+    } else {
+      await _tts.speak("No text found in the image.");
     }
   }
 
@@ -42,16 +81,33 @@ class _TextToSpeechScreenState extends State<TextToSpeechScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text('Type, paste, or upload a picture to extract text and hear it.',
-              style: TextStyle(color: Colors.black.withOpacity(.7))),
+          Text(
+            'Type, capture, or upload a picture to extract text and hear it.',
+            style: TextStyle(color: Colors.black.withOpacity(.7)),
+          ),
           const SizedBox(height: 12),
 
-          // ✅ Upload Button
-          FilledButton.icon(
-            onPressed: _pickImage,
-            icon: const Icon(Icons.image),
-            label: const Text("Upload Picture"),
+          // ✅ Buttons: Camera + Gallery
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _captureImage,
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text("Capture"),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _pickImage,
+                  icon: const Icon(Icons.image),
+                  label: const Text("Gallery"),
+                ),
+              ),
+            ],
           ),
+
           if (_pickedImage != null) ...[
             const SizedBox(height: 12),
             ClipRRect(
@@ -61,7 +117,7 @@ class _TextToSpeechScreenState extends State<TextToSpeechScreen> {
           ],
           const SizedBox(height: 12),
 
-          // ✅ Text Field (Auto-filled by OCR)
+          //  Text Field (Auto-filled by OCR)
           TextField(
             controller: _ctrl,
             minLines: 5,
@@ -116,9 +172,15 @@ class _TextToSpeechScreenState extends State<TextToSpeechScreen> {
 
           const SizedBox(height: 12),
 
-          // ✅ Speak + Stop
+          // Speak + Stop
           FilledButton.icon(
-            onPressed: () => _tts.speak(_ctrl.text),
+            onPressed: () {
+              if (_ctrl.text.trim().isEmpty) {
+                _tts.speak("No text to read. Please type or capture text.");
+              } else {
+                _tts.speak(_ctrl.text);
+              }
+            },
             icon: const Icon(Icons.play_arrow_rounded),
             label: const Text('Speak'),
           ),
