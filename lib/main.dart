@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:vision_vox/screens/home_screen.dart';
 import 'package:vision_vox/theme.dart';
+import 'package:vision_vox/services/tts_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,11 +15,14 @@ class VisionVoxApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = buildVisionVoxTheme();
-    return MaterialApp(
-      title: 'Vision Vox',
-      debugShowCheckedModeBanner: false,
-      theme: theme,
-      home: const HomeScreen(),
+    return ChangeNotifierProvider(
+      create: (_) => TtsService(),
+      child: MaterialApp(
+        title: 'VisionVox',
+        debugShowCheckedModeBanner: false,
+        theme: theme,
+        home: const HomeScreen(),
+      ),
     );
   }
 }
